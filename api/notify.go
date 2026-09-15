@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xxxslogan/pay/internal"
+	"github.com/xxxslogan/pay/pkg"
 )
 
 func Handler(w http.ResponseWriter, r *http.Request) {
@@ -22,13 +22,13 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	status := params["trade_status"]
 	orderID := params["out_trade_no"]
 	money := params["money"]
-	if orderID == "" || !internal.Verify(params, secret, sign) || status != "TRADE_SUCCESS" {
+	if orderID == "" || !pkg.Verify(params, secret, sign) || status != "TRADE_SUCCESS" {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("fail"))
 		return
 	}
-	var order internal.Order
-	if err := internal.GetJSON("order:"+orderID, &order); err != nil {
+	var order pkg.Order
+	if err := pkg.GetJSON("order:"+orderID, &order); err != nil {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("fail"))
 		return
@@ -43,8 +43,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("success"))
 		return
 	}
-	cardKey := internal.NewCardKey()
-	card := internal.Card{
+	cardKey := pkg.NewCardKey()
+	card := pkg.Card{
 		CardKey:    cardKey,
 		OrderID:    orderID,
 		BindDevice: "",
@@ -53,12 +53,12 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	order.Status = "paid"
 	order.CardKey = cardKey
-	if err := internal.SetJSON("card:"+cardKey, card); err != nil {
+	if err := pkg.SetJSON("card:"+cardKey, card); err != nil {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("fail"))
 		return
 	}
-	if err := internal.SetJSON("order:"+orderID, order); err != nil {
+	if err := pkg.SetJSON("order:"+orderID, order); err != nil {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("fail"))
 		return

@@ -5,7 +5,7 @@ import (
 	"html"
 	"net/http"
 
-	"github.com/xxxslogan/pay/internal"
+	"github.com/xxxslogan/pay/pkg"
 )
 
 func Handler(w http.ResponseWriter, r *http.Request) {
@@ -18,8 +18,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(page("未找到订单号。请回到 RimixFac，支付完成后本页会显示卡密。")))
 		return
 	}
-	var order internal.Order
-	if err := internal.GetJSON("order:"+orderID, &order); err != nil {
+	var order pkg.Order
+	if err := pkg.GetJSON("order:"+orderID, &order); err != nil {
 		_, _ = w.Write([]byte(page("订单尚未同步，请稍候刷新。")))
 		return
 	}

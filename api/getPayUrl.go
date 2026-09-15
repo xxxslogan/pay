@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xxxslogan/pay/internal"
+	"github.com/xxxslogan/pay/pkg"
 )
 
 type payReq struct {
@@ -16,32 +16,32 @@ type payReq struct {
 }
 
 func Handler(w http.ResponseWriter, r *http.Request) {
-	if internal.CORS(w, r) {
+	if pkg.CORS(w, r) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		internal.JSON(w, 200, map[string]any{"code": 405, "msg": "method not allowed"})
+		pkg.JSON(w, 200, map[string]any{"code": 405, "msg": "method not allowed"})
 		return
 	}
-	if !internal.CheckAPIToken(r) {
-		internal.JSON(w, 200, map[string]any{"code": 401, "msg": "unauthorized"})
+	if !pkg.CheckAPIToken(r) {
+		pkg.JSON(w, 200, map[string]any{"code": 401, "msg": "unauthorized"})
 		return
 	}
 	var req payReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		internal.JSON(w, 200, map[string]any{"code": 400, "msg": "json parse error"})
+		pkg.JSON(w, 200, map[string]any{"code": 400, "msg": "json parse error"})
 		return
 	}
 	req.PackageID = strings.TrimSpace(req.PackageID)
 	req.DeviceID = strings.TrimSpace(req.DeviceID)
-	if req.DeviceID == "" || !internal.PackageOK(req.PackageID) {
-		internal.JSON(w, 200, map[string]any{"code": 400, "msg": "invalid packageId or deviceId"})
+	if req.DeviceID == "" || !pkg.PackageOK(req.PackageID) {
+		pkg.JSON(w, 200, map[string]any{"code": 400, "msg": "invalid packageId or deviceId"})
 		return
 	}
 	pid := strings.TrimSpace(os.Getenv("GOPAY_PID"))
 	secret := strings.TrimSpace(os.Getenv("GOPAY_SECRET"))
 	if pid == "" || secret == "" {
-		internal.JSON(w, 200, map[string]any{"code": 500, "msg": "pay config missing"})
+		pkg.JSON(w, 200, map[string]any{"code": 500, "msg": "pay config missing"})
 		return
 	}
 	host := r.Header.Get("X-Forwarded-Host")
@@ -52,22 +52,22 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	if proto == "" {
 		proto = "https"
 	}
-	base := internal.PublicBase(host, proto)
-	orderID := internal.NewOrderID()
-	money := internal.PackageMoney()
+	base := pkg.PublicBase(host, proto)
+	orderID := pkg.NewOrderID()
+	money := pkg.PackageMoney()
 	params := map[string]string{
 		"pid":          pid,
 		"type":         "wxpay",
 		"out_trade_no": orderID,
 		"notify_url":   base + "/api/notify",
 		"return_url":   base + "/api/paid",
-		"name":         internal.PackageName(),
+		"name":         pkg.PackageName(),
 		"money":        money,
 		"param":        req.PackageID,
 	}
-	params["sign"] = internal.Sign(params, secret)
+	params["sign"] = pkg.Sign(params, secret)
 	params["sign_type"] = "MD5"
-	order := internal.Order{
+	order := pkg.Order{
 		OrderID:   orderID,
 		DeviceID:  req.DeviceID,
 		PackageID: req.PackageID,
@@ -75,14 +75,14 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		Status:    "pending",
 		Created:   time.Now().Unix(),
 	}
-	if err := internal.SetJSON("order:"+orderID, order); err != nil {
-		internal.JSON(w, 200, map[string]any{"code": 500, "msg": "store order fail"})
+	if err := pkg.SetJSON("order:"+orderID, order); err != nil {
+		pkg.JSON(w, 200, map[string]any{"code": 500, "msg": "store order fail"})
 		return
 	}
-	internal.JSON(w, 200, map[string]any{
+	pkg.JSON(w, 200, map[string]any{
 		"code":    0,
 		"msg":     "ok",
-		"payUrl":  internal.BuildPayURL(params),
+		"payUrl":  pkg.BuildPayURL(params),
 		"orderId": orderID,
 	})
 }
