@@ -1,3 +1,8 @@
 {
-  "rewrites": []
+  "rewrites": [
+    { "source": "/api/getPayUrl", "destination": "/api" },
+    { "source": "/api/notify", "destination": "/api" },
+    { "source": "/api/activate", "destination": "/api" },
+    { "source": "/api/paid", "destination": "/api" }
+  ]
 }
