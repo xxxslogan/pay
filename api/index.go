@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -41,19 +42,98 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func route(r *http.Request) string {
-	p := strings.ToLower(strings.TrimSuffix(r.URL.Path, "/"))
+	blob := strings.ToLower(strings.Join([]string{
+		r.URL.Path,
+		r.RequestURI,
+		r.Header.Get("x-forwarded-uri"),
+		r.Header.Get("x-invoke-path"),
+		r.Header.Get("x-matched-path"),
+	}, " "))
 	switch {
-	case strings.HasSuffix(p, "/getpayurl"):
+	case strings.Contains(blob, "getpayurl"):
 		return "getPayUrl"
-	case strings.HasSuffix(p, "/notify"):
-		return "notify"
-	case strings.HasSuffix(p, "/activate"):
+	case strings.Contains(blob, "activate"):
 		return "activate"
-	case strings.HasSuffix(p, "/paid"):
+	case strings.Contains(blob, "notify"):
+		return "notify"
+	case strings.Contains(blob, "paid"):
 		return "paid"
-	default:
-		return ""
 	}
+	// Vercel rewrite may collapse /api/notify and /api/paid to /api.
+	ct := strings.ToLower(r.Header.Get("Content-Type"))
+	if r.Method == http.MethodPost && strings.Contains(ct, "json") {
+		return "getPayUrl"
+	}
+	if r.Method == http.MethodPost {
+		return "notify"
+	}
+	if r.URL.Query().Get("out_trade_no") != "" || r.URL.Query().Get("trade_status") != "" {
+		return "paid"
+	}
+	return ""
+}
+
+func callbackParams(r *http.Request) map[string]string {
+	_ = r.ParseForm()
+	out := map[string]string{}
+	for k, vs := range r.URL.Query() {
+		if len(vs) > 0 && vs[0] != "" {
+			out[k] = vs[0]
+		}
+	}
+	for k, vs := range r.Form {
+		if len(vs) > 0 && vs[0] != "" {
+			out[k] = vs[0]
+		}
+	}
+	return out
+}
+
+func fulfillPaid(params map[string]string) (string, string) {
+	secret := strings.TrimSpace(os.Getenv("GOPAY_SECRET"))
+	sign := params["sign"]
+	orderID := strings.TrimSpace(params["out_trade_no"])
+	money := strings.TrimSpace(params["money"])
+	status := params["trade_status"]
+	if orderID == "" {
+		return "", "missing out_trade_no"
+	}
+	if secret == "" {
+		return "", "missing GOPAY_SECRET"
+	}
+	if !pkg.Verify(params, secret, sign) {
+		return "", "bad sign"
+	}
+	if !pkg.TradePaid(status) {
+		return "", "trade_status=" + status
+	}
+	var order pkg.Order
+	if err := pkg.GetJSON("order:"+orderID, &order); err != nil {
+		return "", "order not found"
+	}
+	if money != "" && order.Money != "" && !pkg.SameMoney(order.Money, money) {
+		return "", "money mismatch " + order.Money + " vs " + money
+	}
+	if order.Status == "paid" && order.CardKey != "" {
+		return order.CardKey, ""
+	}
+	cardKey := pkg.NewCardKey()
+	card := pkg.Card{
+		CardKey:    cardKey,
+		OrderID:    orderID,
+		BindDevice: "",
+		ChangeLeft: 1,
+		Created:    time.Now().Unix(),
+	}
+	order.Status = "paid"
+	order.CardKey = cardKey
+	if err := pkg.SetJSON("card:"+cardKey, card); err != nil {
+		return "", "store card fail"
+	}
+	if err := pkg.SetJSON("order:"+orderID, order); err != nil {
+		return "", "store order fail"
+	}
+	return cardKey, ""
 }
 
 func getPayUrl(w http.ResponseWriter, r *http.Request) {
@@ -128,62 +208,22 @@ func getPayUrl(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func notify(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	params := map[string]string{}
-	for k, vs := range r.Form {
-		if len(vs) > 0 {
-			params[k] = vs[0]
-		}
-	}
-	secret := strings.TrimSpace(os.Getenv("GOPAY_SECRET"))
-	sign := params["sign"]
-	status := params["trade_status"]
-	orderID := params["out_trade_no"]
-	money := params["money"]
-	if orderID == "" || !pkg.Verify(params, secret, sign) || status != "TRADE_SUCCESS" {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("fail"))
-		return
-	}
-	var order pkg.Order
-	if err := pkg.GetJSON("order:"+orderID, &order); err != nil {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("fail"))
-		return
-	}
-	if order.Money != "" && money != "" && order.Money != money {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("fail"))
-		return
-	}
-	if order.Status == "paid" && order.CardKey != "" {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("success"))
-		return
-	}
-	cardKey := pkg.NewCardKey()
-	card := pkg.Card{
-		CardKey:    cardKey,
-		OrderID:    orderID,
-		BindDevice: "",
-		ChangeLeft: 1,
-		Created:    time.Now().Unix(),
-	}
-	order.Status = "paid"
-	order.CardKey = cardKey
-	if err := pkg.SetJSON("card:"+cardKey, card); err != nil {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("fail"))
-		return
-	}
-	if err := pkg.SetJSON("order:"+orderID, order); err != nil {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("fail"))
-		return
-	}
+func writeNotify(w http.ResponseWriter, body string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("success"))
+	_, _ = w.Write([]byte(body))
+}
+
+func notify(w http.ResponseWriter, r *http.Request) {
+	params := callbackParams(r)
+	cardKey, reason := fulfillPaid(params)
+	if reason != "" {
+		log.Printf("notify fail order=%s status=%s money=%s reason=%s", params["out_trade_no"], params["trade_status"], params["money"], reason)
+		writeNotify(w, "fail")
+		return
+	}
+	log.Printf("notify ok order=%s card=%s", params["out_trade_no"], cardKey)
+	writeNotify(w, "success")
 }
 
 func activate(w http.ResponseWriter, r *http.Request) {
@@ -247,14 +287,23 @@ func activate(w http.ResponseWriter, r *http.Request) {
 }
 
 func paid(w http.ResponseWriter, r *http.Request) {
-	orderID := r.URL.Query().Get("out_trade_no")
+	params := callbackParams(r)
+	orderID := strings.TrimSpace(params["out_trade_no"])
 	if orderID == "" {
-		orderID = r.URL.Query().Get("orderId")
+		orderID = strings.TrimSpace(params["orderId"])
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if orderID == "" {
 		_, _ = w.Write([]byte(pageHTML("未找到订单号。请回到 RimixFac，支付完成后本页会显示卡密。")))
 		return
+	}
+	if pkg.TradePaid(params["trade_status"]) && params["sign"] != "" {
+		if cardKey, reason := fulfillPaid(params); reason == "" && cardKey != "" {
+			_, _ = fmt.Fprintf(w, pageHTML(`支付成功。请复制卡密，回到 RimixFac 粘贴激活。<div style="margin:24px 0;padding:16px;border:1px dashed #c9a227;font-size:22px;letter-spacing:2px">%s</div>订单号：%s`), html.EscapeString(cardKey), html.EscapeString(orderID))
+			return
+		} else if reason != "" {
+			log.Printf("paid fulfill order=%s reason=%s", orderID, reason)
+		}
 	}
 	var order pkg.Order
 	if err := pkg.GetJSON("order:"+orderID, &order); err != nil {

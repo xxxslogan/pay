@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -40,6 +42,28 @@ func Verify(params map[string]string, key, sign string) bool {
 		return false
 	}
 	return strings.EqualFold(Sign(params, key), sign)
+}
+
+func SameMoney(a, b string) bool {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return a == b
+	}
+	if a == b {
+		return true
+	}
+	fa, ea := strconv.ParseFloat(a, 64)
+	fb, eb := strconv.ParseFloat(b, 64)
+	if ea != nil || eb != nil {
+		return false
+	}
+	return math.Abs(fa-fb) < 0.005
+}
+
+func TradePaid(status string) bool {
+	s := strings.ToUpper(strings.TrimSpace(status))
+	return s == "TRADE_SUCCESS" || s == "SUCCESS"
 }
 
 func NewOrderID() string {

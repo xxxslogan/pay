@@ -17,6 +17,21 @@ func TestPackageCatalog(t *testing.T) {
 	}
 }
 
+func TestSameMoney(t *testing.T) {
+	if !SameMoney("1.00", "1") || !SameMoney("1", "1.0") || !SameMoney("399.00", "399") {
+		t.Fatal("decimal money should match")
+	}
+	if SameMoney("1.00", "1.01") || SameMoney("399.00", "1") {
+		t.Fatal("different money must not match")
+	}
+}
+
+func TestTradePaid(t *testing.T) {
+	if !TradePaid("TRADE_SUCCESS") || !TradePaid("success") || TradePaid("TRADE_CLOSED") {
+		t.Fatal("trade status")
+	}
+}
+
 func TestSignMatchesEpayDoc(t *testing.T) {
 	params := map[string]string{
 		"money":        "1",
