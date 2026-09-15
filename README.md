@@ -11,7 +11,9 @@ Vercel Serverless（Go）+ 易支付（Go 码）+ Vercel KV。
 - `GET /api/paid` 支付完成展示卡密
 - `POST /api/activate` 卡密 + 设备指纹激活（首次绑定，允许换机 1 次）
 
-套餐：`rimix-perm-399` 或 `ace-perm-399`，默认 399 元永久。
+套餐：
+- `ace-perm-399` / `rimix-perm-399`：399 元永久授权
+- `test-1`：1 元测试单，只用于打通支付与回调，notify / activate 逻辑与正式套餐相同
 
 ## 环境变量
 

@@ -35,14 +35,17 @@ func CheckAPIToken(r *http.Request) bool {
 
 func PackageOK(id string) bool {
 	switch id {
-	case "rimix-perm-399", "ace-perm-399":
+	case "rimix-perm-399", "ace-perm-399", "test-1":
 		return true
 	default:
 		return false
 	}
 }
 
-func PackageMoney() string {
+func PackageMoney(id string) string {
+	if id == "test-1" {
+		return "1.00"
+	}
 	m := strings.TrimSpace(os.Getenv("PACKAGE_PRICE"))
 	if m == "" {
 		return "399.00"
@@ -50,7 +53,10 @@ func PackageMoney() string {
 	return m
 }
 
-func PackageName() string {
+func PackageName(id string) string {
+	if id == "test-1" {
+		return "RimixFac支付测试"
+	}
 	n := strings.TrimSpace(os.Getenv("PACKAGE_NAME"))
 	if n == "" {
 		return "RimixFac永久授权"

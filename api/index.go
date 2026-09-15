@@ -95,14 +95,14 @@ func getPayUrl(w http.ResponseWriter, r *http.Request) {
 	}
 	base := pkg.PublicBase(host, proto)
 	orderID := pkg.NewOrderID()
-	money := pkg.PackageMoney()
+	money := pkg.PackageMoney(req.PackageID)
 	params := map[string]string{
 		"pid":          pid,
 		"type":         "wxpay",
 		"out_trade_no": orderID,
 		"notify_url":   base + "/api/notify",
 		"return_url":   base + "/api/paid",
-		"name":         pkg.PackageName(),
+		"name":         pkg.PackageName(req.PackageID),
 		"money":        money,
 		"param":        req.PackageID,
 	}

@@ -2,6 +2,21 @@ package pkg
 
 import "testing"
 
+func TestPackageCatalog(t *testing.T) {
+	if !PackageOK("ace-perm-399") || !PackageOK("test-1") || PackageOK("nope") {
+		t.Fatal("package allow-list")
+	}
+	if PackageMoney("test-1") != "1.00" {
+		t.Fatalf("test money=%s", PackageMoney("test-1"))
+	}
+	if PackageMoney("ace-perm-399") != "399.00" {
+		t.Fatalf("live money=%s", PackageMoney("ace-perm-399"))
+	}
+	if PackageName("test-1") == PackageName("ace-perm-399") {
+		t.Fatal("test package should use a distinct name")
+	}
+}
+
 func TestSignMatchesEpayDoc(t *testing.T) {
 	params := map[string]string{
 		"money":        "1",
